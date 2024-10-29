@@ -3,8 +3,8 @@
 # Vérification de l'argument
 if [ -z "$1" ]; then
   echo "Erreur : Veuillez fournir une ville en argument."
-  echo "Utilisation : ./Extracteur_Meteo.sh <ville>"
-  echo "Exemple : ./Extracteur_Meteo.sh Toulouse"
+  echo "Utilisation : $0 <ville>"
+  echo "Exemple : $0 Toulouse"
   exit 1
 fi
 
@@ -12,37 +12,39 @@ fi
 VILLE="$1"
 DATE=$(date '+%Y-%m-%d')
 HEURE=$(date '+%H:%M')
+FICHIER_METEO="meteo_${VILLE}_${DATE}_${HEURE}.json"
 FICHIER_RESULTAT="meteo.txt"
 
-# Récupération des données météo depuis wttr.in et arrêt du script en cas d'erreur de connexion
-if ! curl -s "wttr.in/${VILLE}?format=%t+%f" > meteo_data.txt; then
+# Récupérer les données météo
+if ! curl -s "wttr.in/$VILLE?format=j1" -o "$FICHIER_METEO"; then
   echo "Erreur : Impossible de se connecter à wttr.in pour la ville de $VILLE."
   echo "Veuillez vérifier votre connexion Internet ou l'orthographe de la ville."
+  rm -f "$FICHIER_METEO"
   exit 1
 fi
 
-# Vérification si la ville est inconnue
-if grep -q "Unknown location" meteo_data.txt; then
+# Vérifier si la ville est inconnue ou si le fichier est vide
+if grep -q "Unknown location" "$FICHIER_METEO" || [ ! -s "$FICHIER_METEO" ]; then
   echo "Erreur : La ville $VILLE est inconnue ou les données sont manquantes. Veuillez entrer une autre ville."
-  rm meteo_data.txt
+  rm -f "$FICHIER_METEO"
   exit 1
 fi
 
-# Extraction des températures
-TEMPERATURE_ACTUELLE=$(awk '{print $1}' meteo_data.txt)
-TEMPERATURE_DEMAIN=$(awk '{print $2}' meteo_data.txt)
+# Extraire les informations météo
+TEMPERATURE_ACTUELLE=$(jq -r '.current_condition[0].temp_C' "$FICHIER_METEO")
+TEMPERATURE_DEMAIN=$(jq -r '.weather[1].maxtempC' "$FICHIER_METEO")
 
-# Vérifie si les données sont valides (les variables ne doivent pas être vides)
+# Vérification des données extraites
 if [ -z "$TEMPERATURE_ACTUELLE" ] || [ -z "$TEMPERATURE_DEMAIN" ]; then
   echo "Erreur : Données météorologiques non valides pour la ville de $VILLE."
-  rm meteo_data.txt
+  rm -f "$FICHIER_METEO"
   exit 1
 fi
 
-# Enregistrement des données dans meteo.txt
-echo "$DATE - $HEURE - $VILLE : Température actuelle : ${TEMPERATURE_ACTUELLE} - Prévision du lendemain : ${TEMPERATURE_DEMAIN}" >> "$FICHIER_RESULTAT"
-echo "Les données météo de la ville de $VILLE sont enregistrées dans le fichier $FICHIER_RESULTAT."
+# Écrire les informations météo dans le fichier résultat
+echo "$DATE - $HEURE - $VILLE : Température actuelle : ${TEMPERATURE_ACTUELLE}°C - Prévision du lendemain : ${TEMPERATURE_DEMAIN}°C" >> "$FICHIER_RESULTAT"
+echo "Les informations météo ont été enregistrées dans $FICHIER_RESULTAT."
 
-# Supprime le fichier temporaire contenant les données
-rm meteo_data.txt
+# Nettoyage du fichier temporaire
+rm -f "$FICHIER_METEO"
 
